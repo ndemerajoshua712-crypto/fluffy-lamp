@@ -1,65 +1,63 @@
-// Sets up the SQLite database.
-//
-// Three tables are used:
-//   standings - one row per team in a league table (latest copy we fetched)
-//   matches   - one row per fixture/result we fetched
-//   cache     - raw API responses, so we can reuse them for 10 minutes
-import Database from 'better-sqlite3';
+
+// Sets up the SQLite database using Node.js built-in SQLite.
+
+import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const DATA_DIR = path.join(import.meta.dirname, 'data');
 
 /**
- * Open (or create) the database and make sure the tables exist.
- * Pass ':memory:' to get a throwaway database, which the tests use.
+ * Open or create the database.
+ * Pass ':memory:' for temporary test databases.
  */
 export function openDb(file = path.join(DATA_DIR, 'football.db')) {
   if (file !== ':memory:') {
     fs.mkdirSync(path.dirname(file), { recursive: true });
   }
 
-  const db = new Database(file);
+  const db = new DatabaseSync(file);
 
-  // WAL keeps reads fast while we write cached responses.
-  if (file !== ':memory:') db.pragma('journal_mode = WAL');
+  if (file !== ':memory:') {
+    db.exec('PRAGMA journal_mode = WAL');
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS standings (
-      league         TEXT    NOT NULL,
-      team_id        INTEGER NOT NULL,
-      position       INTEGER,
-      team_name      TEXT,
-      played         INTEGER,
-      won            INTEGER,
-      drawn          INTEGER,
-      lost           INTEGER,
-      goals_for      INTEGER,
-      goals_against  INTEGER,
+      league TEXT NOT NULL,
+      team_id INTEGER NOT NULL,
+      position INTEGER,
+      team_name TEXT,
+      played INTEGER,
+      won INTEGER,
+      drawn INTEGER,
+      lost INTEGER,
+      goals_for INTEGER,
+      goals_against INTEGER,
       goal_difference INTEGER,
-      points         INTEGER,
-      updated_at     INTEGER NOT NULL,
+      points INTEGER,
+      updated_at INTEGER NOT NULL,
       PRIMARY KEY (league, team_id)
     );
 
     CREATE TABLE IF NOT EXISTS matches (
-      id             INTEGER PRIMARY KEY,
-      league         TEXT,
-      utc_date       TEXT,
-      status         TEXT,
-      matchday       INTEGER,
-      home_team_id   INTEGER,
+      id INTEGER PRIMARY KEY,
+      league TEXT,
+      utc_date TEXT,
+      status TEXT,
+      matchday INTEGER,
+      home_team_id INTEGER,
       home_team_name TEXT,
-      home_score     INTEGER,
-      away_team_id   INTEGER,
+      home_score INTEGER,
+      away_team_id INTEGER,
       away_team_name TEXT,
-      away_score     INTEGER,
-      updated_at     INTEGER NOT NULL
+      away_score INTEGER,
+      updated_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS cache (
-      url        TEXT PRIMARY KEY,
-      json       TEXT    NOT NULL,
+      url TEXT PRIMARY KEY,
+      json TEXT NOT NULL,
       fetched_at INTEGER NOT NULL
     );
   `);
@@ -67,7 +65,22 @@ export function openDb(file = path.join(DATA_DIR, 'football.db')) {
   return db;
 }
 
-/** Save a league table into the standings table (replacing the old copy). */
+/**
+ * Execute a group of database operations atomically.
+ */
+function transaction(db, callback) {
+  db.exec('BEGIN');
+
+  try {
+    callback();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+/** Save league standings. */
 export function saveStandings(db, league, rows, now = Date.now()) {
   const insert = db.prepare(`
     INSERT INTO standings (
@@ -91,14 +104,18 @@ export function saveStandings(db, league, rows, now = Date.now()) {
       updated_at = excluded.updated_at
   `);
 
-  // A transaction keeps a whole table refresh atomic.
-  const saveAll = db.transaction((items) => {
-    for (const row of items) insert.run({ ...row, league, updated_at: now });
+  transaction(db, () => {
+    for (const row of rows) {
+      insert.run({
+        ...row,
+        league,
+        updated_at: now
+      });
+    }
   });
-  saveAll(rows);
 }
 
-/** Save matches into the matches table (insert or update by match id). */
+/** Save matches. */
 export function saveMatches(db, league, matches, now = Date.now()) {
   const insert = db.prepare(`
     INSERT INTO matches (
@@ -124,8 +141,13 @@ export function saveMatches(db, league, matches, now = Date.now()) {
       updated_at = excluded.updated_at
   `);
 
-  const saveAll = db.transaction((items) => {
-    for (const m of items) insert.run({ ...m, league, updated_at: now });
+  transaction(db, () => {
+    for (const match of matches) {
+      insert.run({
+        ...match,
+        league,
+        updated_at: now
+      });
+    }
   });
-  saveAll(matches);
 }
