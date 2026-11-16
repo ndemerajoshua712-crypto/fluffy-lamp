@@ -1,0 +1,26 @@
+{
+  "name": "football-stats",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Football standings, fixtures and form, powered by football-data.org",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "dev:client": "vite",
+    "build": "vite build",
+    "test": "node --test server/*.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.2.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5",
+    "vite": "^8.3.6"
+  }
+}

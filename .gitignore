@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# Local SQLite database (created automatically on first run)
+server/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs and editor noise
+*.log
+.DS_Store
+
+# Screenshots captured while testing
+artifacts/
